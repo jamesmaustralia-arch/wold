@@ -423,8 +423,11 @@ apply_shaping() {
     command -v tc >/dev/null 2>&1 || { log "shaping: tc absent, skip"; return 0; }
 
     # Skip tiered nodes (HK): presence of the tier apply script or the nft ledger.
+    # [2026-09-18 repo-move] The ledger table name is no longer hard-coded: any
+    # "<prefix>_tiers" table in the ip family marks a tiered node.
+    # was: || nft list table ip <prefix>_tiers >/dev/null 2>&1; then
     if [ -x /usr/local/sbin/node-tierlimit-apply.sh ] \
-       || nft list table ip fjolsky_tiers >/dev/null 2>&1; then
+       || nft list tables ip 2>/dev/null | grep -qE '^table ip [A-Za-z0-9_]*_tiers$'; then
         log "shaping: tiered node, leaving shaping to node-tierlimit"; return 0
     fi
 
@@ -564,7 +567,10 @@ command -v jq >/dev/null 2>&1 || { log "jq missing, skipping acme sync"; exit 0;
 # The API identifies the node by source IP; no credentials are sent or needed.
 DOMAIN=$(jq -r '.inbounds[0].tls.server_name // empty' "$CONFIG" 2>/dev/null \
          | sed 's/^[^.]*\.//')
-[ -n "$DOMAIN" ] || DOMAIN="fjolskylduoryggisverndar.com"
+# [2026-09-18 repo-move] No hard-coded fallback domain: the API host is derived
+# from the node's own TLS server_name, and without one there is nothing to sync.
+# was: [ -n "$DOMAIN" ] || DOMAIN="<previous hard-coded fallback domain>"
+[ -n "$DOMAIN" ] || { log "no tls server_name in config, skipping acme sync"; exit 0; }
 
 RESPONSE=$(curl -fsS --max-time 30 -X POST "https://api.$DOMAIN/v1/server/config" 2>/dev/null)
 [ -n "$RESPONSE" ] || { log "config fetch failed, keeping current token"; exit 0; }
